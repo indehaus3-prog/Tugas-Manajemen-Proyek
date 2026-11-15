@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Transaksi Baru — Admin Shabria Laundry</title>
+  <link rel="stylesheet" href="../css/main.css" />
+  <style>
+    .page-inner   { padding: 28px 32px; max-width: 860px; margin: 0 auto; }
+    .step-header  { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+    .step-dot     { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; flex-shrink: 0; }
+    .step-line    { flex: 1; height: 2px; border-radius: 2px; }
+
+    .step-panel   { display: none; }
+    .step-panel.active { display: block; }
+
+    .customer-option, .layanan-option {
+      display: flex; align-items: center; gap: 14px;
+      padding: 14px 16px; border-radius: 14px;
+      border: 2px solid transparent;
+      background: white; cursor: pointer;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.06);
+      margin-bottom: 10px; width: 100%;
+      text-align: left; transition: all 0.15s;
+    }
+    .customer-option:hover, .layanan-option:hover { border-color: #BFDBFE; }
+    .customer-option.selected, .layanan-option.selected {
+      border-color: #1565C0; background: #EFF6FF;
+    }
+    .check-circle {
+      width: 22px; height: 22px; border-radius: 50%;
+      border: 2px solid #E5E7EB; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .check-circle.checked { background: #1565C0; border-color: #1565C0; color: white; }
+
+    .cat-pill { height: 40px; padding: 0 16px; border-radius: 10px; border: none; cursor: pointer; font-size: 13px; font-weight: 500; white-space: nowrap; flex-shrink: 0; background: #E5E7EB; color: #374151; transition: all 0.15s; }
+    .cat-pill.active { background: #1565C0; color: white; font-weight: 700; box-shadow: 0 2px 8px rgba(21,101,192,0.3); }
+
+    .qty-control { display: flex; align-items: center; gap: 16px; }
+    .qty-btn { width: 44px; height: 44px; border-radius: 12px; background: #EFF6FF; border: none; cursor: pointer; font-size: 22px; font-weight: 700; color: #1565C0; }
+
+    .summary-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #F3F4F6; font-size: 14px; }
+    .summary-row:last-child { border-bottom: none; }
+
+    @media print {
+      body * { visibility: hidden !important; }
+      #app { display: none !important; }
+      #toast-container { display: none !important; }
+      
+      #printArea, #printArea * { visibility: visible !important; }
+      #printArea {
+        display: block !important;
+        position: absolute; left: 0; top: 0;
+        width: 58mm; 
+        margin: 0; padding: 2mm;
+        /* Ganti font ke Consolas dan paksa TEBAL */
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 12px; 
+        font-weight: 800; /* INI KUNCINYA BIAR ITEM PEKAT */
+        color: black;
+        line-height: 1.2;
+      }
+      @page { margin: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app" style="display:flex; height:100vh; overflow:hidden; background:#F0F7FF;">
+    <div id="sidebar" class="desktop-sidebar" style="flex-shrink:0;"></div>
+    <div id="overlay" onclick="closeSidebar()" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:198;"></div>
+    <div id="mobileSidebar" style="display:none; position:fixed; top:0; left:0; bottom:0; width:260px; z-index:199;"></div>
+
+    <div style="flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0;">
+      <header id="topHeader"></header>
+
+      <main style="flex:1; overflow-y:auto; scrollbar-width:none;">
+        <div class="page-inner">
+
+          <div style="display:flex; align-items:center; gap:12px; margin-bottom:24px;">
+            <a href="transaksi.html" style="width:38px; height:38px; border-radius:10px; background:#EFF6FF; border:1.5px solid #BFDBFE; display:flex; align-items:center; justify-content:center; text-decoration:none; font-size:18px;">←</a>
+            <div>
+              <h1 style="font-size:22px; font-weight:900; color:#111827;">Transaksi Baru</h1>
+              <p id="stepLabel" style="font-size:13px; color:#9CA3AF;">Langkah 1 dari 4</p>
+            </div>
+          </div>
+
+          <div class="step-header" id="stepIndicator" style="margin-bottom:28px;"></div>
+
+          <div class="step-panel active" id="step0">
+            <h2 style="font-size:16px; font-weight:800; color:#111827; margin-bottom:14px;">Pilih Customer</h2>
+            <div class="search-bar" style="margin-bottom:16px;">
+              <span>🔍</span>
+              <input type="text" id="customerSearch" placeholder="Cari nama atau nomor telepon..."
+                oninput="filterCustomerOptions()" />
+            </div>
+            <div id="customerOptions">
+              <p style="text-align:center; color:#9CA3AF; padding:30px 0;">Memuat...</p>
+            </div>
+          </div>
+
+          <div class="step-panel" id="step1">
+            <h2 style="font-size:16px; font-weight:800; color:#111827; margin-bottom:14px;">Pilih Layanan</h2>
+
+            <div style="margin-bottom:16px;">
+              <label style="font-size:13px; font-weight:700; color:#374151; display:block; margin-bottom:8px;">Pilih Katalog Layanan:</label>
+              <select id="catDropdown" onchange="setJenis(Number(this.value))" 
+                      style="width:100%; padding:12px 16px; border-radius:12px; border:1.5px solid #BFDBFE; font-size:14px; font-weight:700; color:#1565C0; background:#EFF6FF; outline:none; cursor:pointer;">
+              </select>
+            </div>
+
+            <div id="layananOptions" style="margin-bottom:16px;"></div>
+
+            <div id="qtySection" style="display:none; background:white; border-radius:18px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,0.07); border:1.5px solid #BFDBFE; margin-bottom:12px;">
+              <p id="qtyLabel" style="font-size:14px; font-weight:700; color:#374151; margin-bottom:16px;">Estimasi Berat</p>
+              <div class="qty-control" style="justify-content:center; margin-bottom:16px;">
+                <button class="qty-btn" onclick="changeQty(-1)">−</button>
+                <div style="text-align:center; min-width:100px;">
+                  <p id="qtyDisplay" style="font-size:28px; font-weight:900; color:#111827;">1 kg</p>
+                  <p id="qtyPrice"   style="font-size:13px; font-weight:700; color:#1565C0;">= Rp 0</p>
+                </div>
+                <button class="qty-btn" onclick="changeQty(1)">+</button>
+              </div>
+              <textarea id="catatanInput" placeholder="Catatan (opsional)..." rows="2"
+                style="width:100%; resize:none; background:#F9FAFB; border:1px solid #E5E7EB; border-radius:12px; padding:10px 14px; font-size:13px; outline:none;"></textarea>
+              
+              <button onclick="addToCart()" class="btn btn-primary" style="width:100%; margin-top:16px; height:44px; font-size:14px;">🛒 Masukin Keranjang</button>
+            </div>
+
+            <div id="cartSection" style="display:none; margin-top:20px;"></div>
+
+            <div id="cartSection" style="display:none;"></div>
+          </div>
+
+          <div class="step-panel" id="step2">
+            <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:12px; padding:12px 16px; display:flex; gap:10px; align-items:flex-start; margin-bottom:20px;">
+              <span>💡</span>
+              <p style="font-size:12px; color:#1565C0; font-weight:600;">Semua pilihan di halaman ini bersifat opsional.</p>
+            </div>
+            <h3 style="font-size:15px; font-weight:800; color:#111827; margin-bottom:12px;">Tambahan</h3>
+            <div id="tambahanOptions" style="margin-bottom:20px;"></div>
+            <hr style="border:none; border-top:1px solid #E5E7EB; margin-bottom:20px;" />
+            <h3 style="font-size:15px; font-weight:800; color:#111827; margin-bottom:12px;">Antar Jemput</h3>
+            <div id="antarJemputOptions"></div>
+            <div id="extraSummary" style="display:none; background:#F8FAFF; border:1.5px solid #BFDBFE; border-radius:16px; padding:14px 16px; margin-top:16px;"></div>
+          </div>
+
+          <div class="step-panel" id="step3">
+            <h2 style="font-size:16px; font-weight:800; color:#111827; margin-bottom:16px;">Pilih Metode Pembayaran</h2>
+            <div id="payOptions" style="margin-bottom:10px;"></div>
+            
+            <div id="areaCashInput" style="display:none; background:#EFF6FF; border:1.5px solid #BFDBFE; border-radius:12px; padding:16px; margin-bottom:20px;">
+              <label style="font-size:13px; font-weight:700; color:#374151;">Nominal Uang dari Pelanggan (Rp)</label>
+              <input type="number" id="inputUangCash" oninput="hitungKembalian()" class="form-control" style="margin-top:8px; height:46px; font-size:16px; font-weight:bold;" placeholder="Masukkan nominal (cth: 100000)">
+              <div style="margin-top:12px; font-size:15px; font-weight:800;">
+                Kembalian: <span id="teksKembalian" style="color:#DC2626;">Rp 0</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">Ringkasan Order</div>
+              <div style="padding:16px 20px;" id="orderSummary"></div>
+            </div>
+          </div>
+
+          <div class="step-panel" id="step4" style="text-align:center; padding:40px 20px;">
+            <div style="width:90px; height:90px; border-radius:50%; background:#DCFCE7; display:flex; align-items:center; justify-content:center; font-size:50px; margin:0 auto 20px;">✅</div>
+            <h2 style="font-size:22px; font-weight:900; color:#111827; margin-bottom:8px;">Transaksi Berhasil!</h2>
+            <p style="font-size:14px; color:#6B7280; margin-bottom:24px;">Data transaksi telah disimpan</p>
+            <div id="successCard" class="card" style="text-align:left; max-width:480px; margin:0 auto 24px;"></div>
+            
+            <div id="successActions" style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;"></div>
+          </div>
+
+          <div id="navBtns" style="display:flex; gap:12px; justify-content:flex-end; margin-top:24px; padding-top:20px; border-top:1px solid #E5E7EB;">
+            <button onclick="prevStep()" id="btnBack" style="display:none;" class="btn btn-ghost">← Kembali</button>
+            <button onclick="nextStep()" id="btnNext" class="btn btn-primary" disabled>Lanjut →</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div id="printArea" style="display:none;"></div>
+  <div class="modal-overlay" id="modalPreviewStruk" style="z-index:9999;">
+    <div style="background:#F3F4F6; padding:20px; border-radius:16px; display:flex; flex-direction:column; align-items:center; max-height:90vh;">
+      <h3 style="font-size:16px; font-weight:800; margin-bottom:16px; color:#111827;">Preview Struk (58mm)</h3>
+      
+      <div id="strukLayar" style="width: 58mm; background: white; padding: 4mm; font-family: 'Courier New', Courier, monospace; font-size: 11px; color: black; line-height: 1.2; text-align: left; box-shadow: 0 4px 12px rgba(0,0,0,0.15); overflow-y:auto; max-height:60vh;">
+      </div>
+
+      <div style="margin-top:20px; display:flex; gap:12px;">
+         <button onclick="document.getElementById('modalPreviewStruk').classList.remove('show')" class="btn btn-ghost">Tutup</button>
+         <button onclick="window.print()" class="btn btn-primary" style="background:#111827;">🖨️ Print Fisik</button>
+      </div>
+    </div>
+  </div>
+  <div id="toast-container"></div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/layout.js"></script>
+  <script>
+    let currentStep   = 0;
+    const TOTAL_STEPS = 4;
+    let customers     = [];
+    let layananAll    = [];
+    let addons        = [];
+    let currentUser   = null;
+
+    let selectedCustomer  = null;
+    let cart              = [];          
+    let selectedTambahan  = {};
+    let selectedAntar     = new Set();
+    let metodePembayaran  = null;
+    let pendingLayanan    = null;        
+    let pendingQty        = 1;
+    let jenisBarangAll = [];
+    let activeJenisId  = null; 
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      currentUser = await requireAuth(['admin', 'manager', 'owner']);
+      initAdminLayout(currentUser, 'transaksi');
+      updateStepUI();
+
+      try {
+        jenisBarangAll = await api.layanan.jenis();
+
+        [customers, layananAll, addons] = await Promise.all([
+          api.pelanggan.all(),
+          api.layanan.all(),
+          api.addon.all(),
+        ]);
+
+        if (jenisBarangAll.length > 0) activeJenisId = jenisBarangAll[0].id_jenis_barang;
+
+        renderCustomerOptions(customers);
+        renderAddons();
+        renderPayOptions();
+      } catch (e) {
+        showToast('Gagal memuat data dari server', 'error');
+      }
+    });
+
+    function updateStepUI() {
+      const steps = ['Customer','Layanan','Tambahan','Pembayaran'];
+      document.getElementById('stepLabel').textContent =
+        `Langkah ${currentStep + 1} dari ${TOTAL_STEPS}`;
+
+      document.getElementById('stepIndicator').innerHTML = steps.map((s, i) => `
+        <div class="step-dot" style="background:${i <= currentStep ? '#1565C0':'#E5E7EB'}; color:${i <= currentStep ? 'white':'#9CA3AF'};">
+          ${i < currentStep ? '✓' : i + 1}
+        </div>
+        ${i < steps.length - 1 ? `<div class="step-line" style="background:${i < currentStep ? '#1565C0':'#E5E7EB'};"></div>` : ''}
+      `).join('');
+
+      for (let i = 0; i < TOTAL_STEPS; i++) {
+        const p = document.getElementById(`step${i}`);
+        if (p) p.classList.toggle('active', i === currentStep);
+      }
+
+      const btnBack = document.getElementById('btnBack');
+      const btnNext = document.getElementById('btnNext');
+      const navBtns = document.getElementById('navBtns');
+
+      btnBack.style.display = currentStep > 0 ? 'inline-flex' : 'none';
+      navBtns.style.display = currentStep === TOTAL_STEPS ? 'none' : 'flex';
+
+      if (currentStep === TOTAL_STEPS - 1) {
+        btnNext.textContent = 'Simpan Transaksi ✓';
+      } else {
+        btnNext.textContent = 'Lanjut →';
+      }
+      validateStep();
+    }
+
+    function validateStep() {
+      const btn = document.getElementById('btnNext');
+      let valid = false;
+      if (currentStep === 0) valid = !!selectedCustomer;
+      if (currentStep === 1) valid = cart.length > 0 || !!pendingLayanan;
+      if (currentStep === 2) valid = true;
+      if (currentStep === 3) valid = !!metodePembayaran;
+      btn.disabled = !valid;
+    }
+
+    function nextStep() {
+      if (currentStep === 1 && pendingLayanan) addToCart();
+      if (currentStep === TOTAL_STEPS - 1) { saveTransaksi(); return; }
+      currentStep++;
+      updateStepUI();
+      if (currentStep === 1) renderLayananOptions();
+      if (currentStep === 3) renderOrderSummary();
+    }
+
+    function prevStep() {
+      currentStep--;
+      updateStepUI();
+    }
+
+    function renderCustomerOptions(list) {
+      const container = document.getElementById('customerOptions');
+      if (!list || list.length === 0) {
+        container.innerHTML = `<p style="text-align:center; color:#EF4444; padding:30px 0; font-weight:700;">🤷‍♂️ Customer tidak ditemukan.</p>`;
+        return;
+      }
+
+      container.innerHTML = list.map(c => {
+        const nama = `${c.pel_first_name} ${c.pel_last_name}`.trim();
+        const initials = nama.split(' ').map(w=>w[0]).slice(0,2).join('').toUpperCase();
+        const isSel = selectedCustomer?.id_pelanggan === c.id_pelanggan;
+        return `
+          <button class="customer-option ${isSel?'selected':''}" onclick="selectCustomer(${c.id_pelanggan})">
+            <div style="width:46px; height:46px; border-radius:14px; background:${isSel?'#1565C0':'#F3F4F6'}; display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:800; color:${isSel?'white':'#6B7280'}; flex-shrink:0;">${initials}</div>
+            <div style="flex:1; text-align:left;">
+              <p style="font-size:14px; font-weight:700; color:#111827;">${nama}</p>
+              <p style="font-size:12px; color:#9CA3AF;">${c.pel_no_telepon}</p>
+            </div>
+            <div class="check-circle ${isSel?'checked':''}">${isSel?'✓':''}</div>
+          </button>`;
+      }).join('');
+    }
+
+    function filterCustomerOptions() {
+      const q = document.getElementById('customerSearch').value.toLowerCase();
+      renderCustomerOptions(customers.filter(c =>
+        (`${c.pel_first_name} ${c.pel_last_name}`).toLowerCase().includes(q) ||
+        c.pel_no_telepon.includes(q)
+      ));
+    }
+
+    function selectCustomer(id) {
+      selectedCustomer = customers.find(c => c.id_pelanggan === id);
+      renderCustomerOptions(customers);
+      validateStep();
+    }
+
+    function setJenis(id) {
+      activeJenisId = id;
+      pendingLayanan = null;
+      renderLayananOptions();
+    }
+
+    function renderLayananOptions() {
+      const catDropdown = document.getElementById('catDropdown');
+      if (catDropdown.innerHTML.trim() === '') {
+        catDropdown.innerHTML = jenisBarangAll.map(j => `
+          <option value="${j.id_jenis_barang}">${j.jenis_nama}</option>
+        `).join('');
+      }
+      catDropdown.value = activeJenisId;
+
+      const visible = layananAll.filter(l => l.id_jenis_barang === activeJenisId && (l.aktif === 1 || l.aktif === true || l.aktif === undefined));
+
+      document.getElementById('layananOptions').innerHTML = visible.map(l => {
+        const isSel = pendingLayanan?.id_layanan === l.id_layanan;
+        return `
+          <button class="layanan-option ${isSel?'selected':''}" onclick="selectLayanan(${l.id_layanan})">
+            <div style="width:48px; height:48px; border-radius:14px; background:${isSel?'#DBEAFE':'#F9FAFB'}; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">${l.icon || '🧺'}</div>
+            <div style="flex:1; text-align:left;">
+              <p style="font-size:13px; font-weight:700; color:#111827;">${l.lay_nama}</p>
+              <p style="font-size:12px; color:#1565C0; font-weight:600; margin-top:2px;">
+                ${formatRupiah(l.lay_harga)}/${l.satuan}
+                ${l.estimasi_hari > 0 ? ' · ~' + l.estimasi_hari + ' hari' : ''}
+              </p>
+            </div>
+            <div class="check-circle ${isSel?'checked':''}">${isSel?'✓':''}</div>
+          </button>`;
+      }).join('') || `<p style="text-align:center; color:#9CA3AF; padding:20px 0;">Belum ada layanan di kategori ini</p>`;
+
+      updateQtySection();
+      renderCart();
+      validateStep();
+    }
+
+    function selectLayanan(id) {
+      pendingLayanan = layananAll.find(l => l.id_layanan === id);
+      pendingQty = 1;
+      renderLayananOptions();
+      updateQtySection();
+      validateStep();
+    }
+
+    function updateQtySection() {
+      const sec = document.getElementById('qtySection');
+      if (!pendingLayanan) { sec.style.display = 'none'; return; }
+      sec.style.display = 'block';
+      const isKg = pendingLayanan.satuan === 'kg';
+      document.getElementById('qtyLabel').textContent = isKg ? 'Estimasi Berat' : 'Jumlah Item';
+      refreshQtyDisplay();
+    }
+
+    function changeQty(delta) {
+      pendingQty = Math.max(1, pendingQty + delta);
+      refreshQtyDisplay();
+    }
+
+    function refreshQtyDisplay() {
+      if (!pendingLayanan) return;
+      const isKg = pendingLayanan.satuan === 'kg';
+      document.getElementById('qtyDisplay').textContent = pendingQty + (isKg ? ' kg' : ' pcs');
+      document.getElementById('qtyPrice').textContent = '= ' + formatRupiah(pendingLayanan.lay_harga * pendingQty);
+    }
+
+    function addToCart() {
+      if (!pendingLayanan) return;
+      const isKg = pendingLayanan.satuan === 'kg';
+      cart.push({
+        layananId: pendingLayanan.id_layanan,
+        nama:      pendingLayanan.lay_nama,
+        harga:     pendingLayanan.lay_harga,
+        qty:       pendingQty,
+        isKiloan:  isKg,
+        catatan:   document.getElementById('catatanInput').value,
+        subTotal:  pendingLayanan.lay_harga * pendingQty,
+      });
+      pendingLayanan = null;
+      pendingQty     = 1;
+      document.getElementById('catatanInput').value = '';
+      document.getElementById('qtySection').style.display = 'none';
+      renderLayananOptions();
+      renderCart();
+      validateStep();
+    }
+
+    function renderCart() {
+      const sec = document.getElementById('cartSection');
+      if (cart.length === 0) { sec.style.display = 'none'; return; }
+      sec.style.display = 'block';
+      
+      sec.innerHTML = `
+        <div style="background:white; border-radius:18px; padding:16px 18px; box-shadow:0 2px 8px rgba(0,0,0,0.07); border:1.5px solid #BFDBFE; margin-bottom:10px;">
+          <p style="font-size:13px; font-weight:700; color:#1565C0; margin-bottom:12px;">🛒 Keranjang (${cart.length} layanan)</p>
+          ${cart.map((item, i) => `
+            <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid #F3F4F6;">
+              <div style="flex:1;">
+                <p style="font-size:12px; font-weight:600; color:#374151;">${item.nama}</p>
+                <p style="font-size:11px; color:#9CA3AF;">${item.qty}${item.isKiloan?' kg':' pcs'} · ${formatRupiah(item.subTotal)}</p>
+              </div>
+              <button onclick="removeFromCart(${i})" style="width:26px; height:26px; border-radius:13px; background:#FEE2E2; border:none; cursor:pointer; font-size:13px; color:#DC2626;">✕</button>
+            </div>
+          `).join('')}
+          <div style="display:flex; justify-content:space-between; padding-top:10px; font-size:14px; font-weight:700; color:#374151;">
+            <span>Subtotal Keranjang</span>
+            <span style="color:#1565C0;">${formatRupiah(cart.reduce((s,i)=>s+i.subTotal,0))}</span>
+          </div>
+        </div>
+        <p style="font-size:12px; color:#6B7280; text-align:center; margin-top:8px;">💡 Pilih menu di atas lagi untuk menambah layanan lain.</p>`;
+    }
+
+    function removeFromCart(i) {
+      cart.splice(i, 1);
+      renderCart();
+      validateStep();
+    }
+
+    function renderAddons() {
+      const activeAddons = addons.filter(a => a.aktif === 1 || a.aktif === true || a.aktif === undefined);
+      
+      const tambahan = activeAddons.filter(a => !a.add_nama.toLowerCase().match(/antar|jemput|pick up|delivery/));
+      const antarJemput = activeAddons.filter(a => a.add_nama.toLowerCase().match(/antar|jemput|pick up|delivery/));
+
+      document.getElementById('tambahanOptions').innerHTML = tambahan.map(a => {
+        const qty = selectedTambahan[a.id_add_on] || 0;
+        const isSel = qty > 0;
+        return `
+          <div style="display:flex; align-items:center; gap:14px; width:100%; padding:14px 16px; border-radius:14px; border:${isSel ? '2px solid #1565C0' : '1.5px solid #F3F4F6'}; background:${isSel ? '#EFF6FF' : 'white'}; margin-bottom:10px; transition:all 0.15s;">
+            <div style="width:48px; height:48px; border-radius:14px; background:#F9FAFB; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">${a.icon || '✨'}</div>
+            <div style="flex:1;">
+              <p style="font-size:13px; font-weight:700; color:#111827;">${a.add_nama}</p>
+              <p style="font-size:12px; color:#1565C0; font-weight:600; margin-top:2px;">${formatRupiah(a.tambahan_harga)}/kg</p>
+            </div>
+            <div style="display:flex; align-items:center; gap:12px; background:white; padding:4px; border-radius:10px; border:1px solid #BFDBFE;">
+              <button onclick="changeTambahanQty(${a.id_add_on}, -1)" style="width:28px; height:28px; border-radius:8px; background:#EFF6FF; border:none; color:#1565C0; font-weight:bold; cursor:pointer;">−</button>
+              <span style="font-size:14px; font-weight:800; color:#111827; width:20px; text-align:center;">${qty}</span>
+              <button onclick="changeTambahanQty(${a.id_add_on}, 1)" style="width:28px; height:28px; border-radius:8px; background:#1565C0; border:none; color:white; font-weight:bold; cursor:pointer;">＋</button>
+            </div>
+          </div>`;
+      }).join('');
+
+      document.getElementById('antarJemputOptions').innerHTML = antarJemput.map(a => {
+        const isSel = selectedAntar.has(a.id_add_on);
+        return `
+          <button onclick="toggleAntar(${a.id_add_on})"
+            style="display:flex; align-items:center; gap:14px; width:100%; padding:14px 16px; border-radius:14px; border:${isSel ? '2px solid #7C3AED' : '1.5px solid #F3F4F6'}; background:${isSel ? '#F5F3FF' : 'white'}; cursor:pointer; margin-bottom:10px; text-align:left; transition:all 0.15s;">
+            <div style="width:48px; height:48px; border-radius:14px; background:#F9FAFB; display:flex; align-items:center; justify-content:center; font-size:24px; flex-shrink:0;">${a.icon || '🚗'}</div>
+            <div style="flex:1;">
+              <p style="font-size:13px; font-weight:700; color:#111827;">${a.add_nama}</p>
+              <p style="font-size:12px; color:#7C3AED; font-weight:600; margin-top:2px;">${formatRupiah(a.tambahan_harga)} / sekali</p>
+            </div>
+            <div style="width:22px; height:22px; border-radius:6px; border:${isSel ? 'none' : '2px solid #D1D5DB'}; background:${isSel ? '#7C3AED' : 'transparent'}; display:flex; align-items:center; justify-content:center; flex-shrink:0; color:white; font-size:13px;">${isSel ? '✓' : ''}</div>
+          </button>`;
+      }).join('');
+    }
+
+    function changeTambahanQty(id, delta) {
+      let current = selectedTambahan[id] || 0;
+      let next = current + delta;
+      if (next < 0) next = 0;
+      if (next === 0) delete selectedTambahan[id];
+      else selectedTambahan[id] = next;
+      renderAddons();
+      updateExtraSummary();
+    }
+
+    function toggleAntar(id) {
+      if (selectedAntar.has(id)) selectedAntar.delete(id);
+      else selectedAntar.add(id);
+      renderAddons();
+      updateExtraSummary();
+    }
+
+    function updateExtraSummary() {
+      const sec = document.getElementById('extraSummary');
+      const totalKgKiloan = cart.filter(i => i.isKiloan).reduce((s,i) => s + i.qty, 0);
+      
+      const selT = Object.keys(selectedTambahan).map(id => {
+        const a = addons.find(x => x.id_add_on == id);
+        return { ...a, qty: selectedTambahan[id] };
+      }).filter(x => x.id_add_on);
+      const selA = [...selectedAntar].map(id => addons.find(a => a.id_add_on === id)).filter(Boolean);
+      
+      if (!selT.length && !selA.length) { sec.style.display = 'none'; return; }
+      sec.style.display = 'block';
+      
+      const rows = [
+        ...selT.map(a => `<div style="display:flex; justify-content:space-between; font-size:12px; color:#6B7280; margin-bottom:4px;"><span>${a.icon||'✨'} ${a.qty}x ${a.add_nama}</span><span>+${formatRupiah(a.tambahan_harga * a.qty * Math.max(1, totalKgKiloan))}</span></div>`),
+        ...selA.map(a => `<div style="display:flex; justify-content:space-between; font-size:12px; color:#6B7280; margin-bottom:4px;"><span>${a.icon||'🚗'} ${a.add_nama}</span><span>+${formatRupiah(a.tambahan_harga)}</span></div>`),
+      ].join('');
+      
+      const totalExtra = selT.reduce((s,a) => s + (a.tambahan_harga * a.qty * Math.max(1, totalKgKiloan)), 0)
+                       + selA.reduce((s,a) => s + a.tambahan_harga, 0);
+                       
+      sec.innerHTML = `<p style="font-size:12px; font-weight:700; color:#374151; margin-bottom:8px;">Ringkasan Biaya Tambahan</p>
+        ${rows}
+        <hr style="border:none; border-top:1px solid #BFDBFE; margin:8px 0;"/>
+        <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:800; color:#1565C0;">
+          <span>Total Ekstra</span><span>+${formatRupiah(totalExtra)}</span>
+        </div>`;
+    }
+
+    function renderPayOptions() {
+      document.getElementById('payOptions').innerHTML = [
+        { value:'Cash',     icon:'💵', desc:'Pembayaran tunai di kasir' },
+        { value:'Cashless', icon:'📱', desc:'Transfer / QRIS / E-Wallet' },
+      ].map(m => `
+        <button onclick="selectPay('${m.value}')" id="pay_${m.value}"
+          style="display:flex; align-items:center; gap:16px; width:100%; padding:16px 18px; border-radius:16px; border:2px solid transparent; background:white; cursor:pointer; margin-bottom:12px; text-align:left; box-shadow:0 1px 5px rgba(0,0,0,0.06); transition:all 0.15s;">
+          <div style="width:52px; height:52px; border-radius:14px; background:#EFF6FF; display:flex; align-items:center; justify-content:center; font-size:28px; flex-shrink:0;">${m.icon}</div>
+          <div>
+            <p style="font-size:15px; font-weight:700; color:#111827;">${m.value}</p>
+            <p style="font-size:13px; color:#6B7280; margin-top:2px;">${m.desc}</p>
+          </div>
+          <div id="payCheck_${m.value}" style="margin-left:auto; font-size:22px; display:none; color:#1565C0;">✓</div>
+        </button>`).join('');
+    }
+
+    function selectPay(val) {
+      metodePembayaran = val;
+      ['Cash','Cashless'].forEach(v => {
+        const btn = document.getElementById(`pay_${v}`);
+        const chk = document.getElementById(`payCheck_${v}`);
+        if (v === val) {
+          btn.style.border = '2px solid #1565C0';
+          btn.style.background = '#EFF6FF';
+          chk.style.display = 'block';
+        } else {
+          btn.style.border = '2px solid transparent';
+          btn.style.background = 'white';
+          chk.style.display = 'none';
+        }
+      });
+      
+      const areaCash = document.getElementById('areaCashInput');
+      if(val === 'Cash') {
+          areaCash.style.display = 'block';
+          hitungKembalian(); // Pancing hitungan
+      } else {
+          areaCash.style.display = 'none';
+          document.getElementById('btnNext').disabled = false; // Buka tombol kalau cashless
+      }
+      
+      renderOrderSummary();
+      validateStep(); // Update status validasi standar
+    }
+
+    function hitungKembalian() {
+      const uang = parseInt(document.getElementById('inputUangCash').value) || 0;
+      
+      // Ambil total bayar dari fungsi renderOrderSummary
+      const totalKgKiloan = cart.filter(i => i.isKiloan).reduce((s,i) => s + i.qty, 0);
+      const selT = Object.keys(selectedTambahan).map(id => ({ ...addons.find(a => a.id_add_on == id), qty: selectedTambahan[id] })).filter(x => x.id_add_on);
+      const selA = [...selectedAntar].map(id => addons.find(a => a.id_add_on === id)).filter(Boolean);
+      const extraTotal = selT.reduce((s,a) => s + (a.tambahan_harga * a.qty * Math.max(1, totalKgKiloan)), 0) + selA.reduce((s,a) => s + a.tambahan_harga, 0);
+      const grandTotal = cart.reduce((s,i) => s + i.subTotal, 0) + extraTotal;
+
+      const kembalian = uang - grandTotal;
+      const teks = document.getElementById('teksKembalian');
+      const btn = document.getElementById('btnNext');
+
+      if (kembalian < 0) {
+          teks.textContent = "Uang Kurang! Minimal " + formatRupiah(grandTotal);
+          teks.style.color = "#DC2626";
+          btn.disabled = true; // Kunci tombol simpan
+      } else {
+          teks.textContent = formatRupiah(kembalian);
+          teks.style.color = "#15803D";
+          btn.disabled = false; // Buka tombol simpan
+      }
+    }
+
+    function renderOrderSummary() {
+      const totalKgKiloan = cart.filter(i => i.isKiloan).reduce((s,i) => s + i.qty, 0);
+      const selT = Object.keys(selectedTambahan).map(id => ({ ...addons.find(a => a.id_add_on == id), qty: selectedTambahan[id] })).filter(x => x.id_add_on);
+      const selA = [...selectedAntar].map(id => addons.find(a => a.id_add_on === id)).filter(Boolean);
+      
+      const cartTotal  = cart.reduce((s,i) => s + i.subTotal, 0);
+      const extraTotal = selT.reduce((s,a) => s + (a.tambahan_harga * a.qty * Math.max(1, totalKgKiloan)), 0)
+                       + selA.reduce((s,a) => s + a.tambahan_harga, 0);
+      const grandTotal = cartTotal + extraTotal;
+
+      document.getElementById('orderSummary').innerHTML = `
+        ${cart.map(i => `
+          <div class="summary-row">
+            <span style="color:#6B7280;">${i.nama} (${i.qty}${i.isKiloan?' kg':' pcs'})</span>
+            <strong>${formatRupiah(i.subTotal)}</strong>
+          </div>`).join('')}
+        ${selT.map(a => `<div class="summary-row"><span style="color:#6B7280;">${a.qty}x ${a.add_nama}</span><span>+${formatRupiah(a.tambahan_harga * a.qty * Math.max(1,totalKgKiloan))}</span></div>`).join('')}
+        ${selA.map(a => `<div class="summary-row"><span style="color:#6B7280;">${a.add_nama}</span><span>+${formatRupiah(a.tambahan_harga)}</span></div>`).join('')}
+        <div class="summary-row" style="font-size:16px; font-weight:900; color:#111827; border-bottom:none; padding-top:14px;">
+          <span>Total Bayar</span>
+          <span style="color:#1565C0;">${formatRupiah(grandTotal)}</span>
+        </div>`;
+    }
+
+    async function saveTransaksi() {
+      const btn = document.getElementById('btnNext');
+      btn.disabled = true; btn.textContent = 'Menyimpan...';
+      try {
+        const totalKgKiloan = cart.filter(i => i.isKiloan).reduce((s,i) => s + i.qty, 0);
+        const selT = Object.keys(selectedTambahan).map(id => {
+          const a = addons.find(x => x.id_add_on == id);
+          return { ...a, qty: selectedTambahan[id] };
+        }).filter(x => x.id_add_on);
+        
+        const selA = [...selectedAntar].map(id => addons.find(a => a.id_add_on === id)).filter(Boolean);
+        const extraTotal = selT.reduce((s,a) => s + (a.tambahan_harga * a.qty * Math.max(1, totalKgKiloan)), 0) + selA.reduce((s,a) => s + a.tambahan_harga, 0);
+        const grandTotal = cart.reduce((s,i) => s + i.subTotal, 0) + extraTotal;
+
+        // Ambil uang cash kalau metode Cash
+        const uangCash = metodePembayaran === 'Cash' ? (parseInt(document.getElementById('inputUangCash').value) || 0) : grandTotal;
+
+        const result = await api.transaksi.create({
+          id_pelanggan:     selectedCustomer.id_pelanggan,
+          id_user:          currentUser.id,
+          total_bayar:      grandTotal,
+          mtd_pembayaran:   metodePembayaran,
+          uang_cash:        uangCash, // Tetep ada, aman!
+          sudah_dibayar:    true,
+          
+          // JURUS SAKTI ANTI LOADING LAMA:
+          items: cart.map((i, index) => ({
+            id_layanan:    i.layananId,
+            sub_harga:     i.subTotal,
+            jumlah_barang: i.isKiloan ? 1 : i.qty,
+            berat_barang:  i.isKiloan ? i.qty : 0,
+            catatan:       i.catatan || '',
+            
+            // Addon cuma nempel di item pertama (index 0) biar gak duplikat dikali lipat!
+            addons: index === 0 ? [
+              ...Object.keys(selectedTambahan).map(id => ({ id: Number(id), qty: selectedTambahan[id] })),
+              ...[...selectedAntar].map(id => ({ id: Number(id), qty: 1 }))
+            ] : [],
+          })),
+        });
+
+        window.lastTrxData = {
+          id: result.id_transaksi,
+          signature: result.signature,
+          customer: selectedCustomer,
+          cart: cart,
+          selT: selT,
+          selA: selA,
+          total: grandTotal,
+          metode: metodePembayaran,
+          uang_cash: uangCash // <--- SIMPAN KE GLOBAL BUAT STRUK
+        };
+
+        // ... Sisa fungsi saveTransaksi lu di bawah (animasi pindah step dll) biarin aja persis kayak aslinya
+        currentStep = TOTAL_STEPS;
+        document.getElementById('navBtns').style.display = 'none';
+        document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+        document.getElementById('step4').classList.add('active');
+        
+        document.getElementById('successCard').innerHTML = `
+          <div style="padding:16px 20px;">
+            ${[
+              ['No. Transaksi', result.id_transaksi],
+              ['Customer',      `${selectedCustomer.pel_first_name} ${selectedCustomer.pel_last_name}`],
+              ['Total Bayar',   formatRupiah(grandTotal)],
+              ['Metode',        metodePembayaran],
+            ].map(([k,v]) => `
+              <div class="summary-row"><span style="color:#9CA3AF; font-size:13px;">${k}</span>
+              <strong style="font-size:13px;">${v}</strong></div>`).join('')}
+          </div>`;
+
+        let waButtonHtml = '';
+        if (selA.length > 0) {
+          waButtonHtml = `<button onclick="kirimWA()" style="background:#25D366; color:white; font-weight:700; border:none; padding:10px 20px; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">📱 Kirim WhatsApp</button>`;
+        }
+
+        document.getElementById('successActions').innerHTML = `
+          <button onclick="cetakInvoicePDF()" style="background:#1565C0; color:white; font-weight:700; border:none; padding:10px 20px; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">📄 Print Invoice</button>
+          <button onclick="downloadInvoicePDF()" style="background:#059669; color:white; font-weight:700; border:none; padding:10px 20px; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">⬇️ Download Invoice</button>
+          <button onclick="cetakLabelPDF()" style="background:#EAB308; color:white; font-weight:700; border:none; padding:10px 20px; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">🏷️ Cetak Label</button>
+          <button onclick="cetakStruk()" style="background:#111827; color:white; font-weight:700; border:none; padding:10px 20px; border-radius:10px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">🖨️ Struk Kasir</button>
+          ${waButtonHtml}
+          <a href="transaksi.html" style="background:white; color:#374151; font-weight:700; border:1.5px solid #D1D5DB; padding:10px 20px; border-radius:10px; cursor:pointer; text-decoration:none;">Daftar Transaksi</a>
+        `;
+
+      } catch (err) {
+        showToast('Gagal menyimpan: ' + err.message, 'error');
+        btn.disabled = false; btn.textContent = 'Simpan Transaksi ✓';
+      }
+    }
+
+    function cetakStruk() {
+      const d = window.lastTrxData;
+      if(!d) return;
+      
+      // Bikin format tanggal lebih rapi dan detail sampai ke menit
+      const date = new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const kembalian = d.uang_cash - d.total;
+      
+      // Format list item yang lebih profesional (Nama item tebal di atas, harga di bawahnya)
+      let itemsHtml = d.cart.map(i => `
+        <div style="margin-bottom: 8px;">
+          <div style="font-weight: 800; font-size: 11px; text-transform: uppercase;">${i.nama}</div>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: #111;">
+            <span>${i.qty}x ${formatRupiah(i.harga)}</span>
+            <span>${formatRupiah(i.subTotal)}</span>
+          </div>
+        </div>
+      `).join('');
+
+      d.selT.forEach(a => {
+        itemsHtml += `
+        <div style="margin-bottom: 8px;">
+          <div style="font-weight: 800; font-size: 11px; text-transform: uppercase;">[*] ${a.add_nama}</div>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: #111;">
+            <span>${a.qty}x ${formatRupiah(a.tambahan_harga)}</span>
+            <span>${formatRupiah(a.tambahan_harga * a.qty)}</span>
+          </div>
+        </div>`;
+      });
+      d.selA.forEach(a => {
+        itemsHtml += `
+        <div style="margin-bottom: 8px;">
+          <div style="font-weight: 800; font-size: 11px; text-transform: uppercase;">[🚚] ${a.add_nama}</div>
+          <div style="display: flex; justify-content: space-between; font-size: 11px; font-weight: 600; color: #111;">
+            <span>1x ${formatRupiah(a.tambahan_harga)}</span>
+            <span>${formatRupiah(a.tambahan_harga)}</span>
+          </div>
+        </div>`;
+      });
+
+      // Garis pembatas ala struk thermal sungguhan
+      const dashedLine = `<div style="border-bottom: 1.5px dashed #000; margin: 10px 0;"></div>`;
+      const solidLine  = `<div style="border-bottom: 1.5px solid #000; margin: 10px 0;"></div>`;
+
+      // Rombak total layout HTML-nya
+      // Rombak total layout HTML-nya
+      const html = `
+        <div style="text-align:center; margin-bottom:12px;">
+          <img src="../assets/Logo.jpeg" style="width: 45mm; height: auto; margin-bottom: 10px; filter: grayscale(100%) contrast(150%);">
+          
+          <h2 style="margin:0; font-size:22px; font-weight:900; letter-spacing:1px; line-height:1.2;">SHABRIA</h2>
+          <h3 style="margin:0; font-size:16px; font-weight:900; letter-spacing:2px; line-height:1.2;">LAUNDRY</h3>
+          <p style="margin:6px 0 0 0; font-size:10px; font-weight:700;">Jl. Raya Salatiga No. 123</p>
+          <p style="margin:2px 0 0 0; font-size:10px; font-weight:700;">Telp: 08123456789</p>
+        </div>
+        
+        ${dashedLine}
+        
+        <table style="width:100%; font-size:10px; font-weight:700; border-collapse:collapse; margin-bottom:4px;">
+          <tr><td style="width:50px; padding-bottom:3px;">NOTA</td><td style="padding-bottom:3px;">: ${d.id}</td></tr>
+          <tr><td style="padding-bottom:3px;">TANGGAL</td><td style="padding-bottom:3px;">: ${date}</td></tr>
+          <tr><td style="padding-bottom:3px;">CUST</td><td style="padding-bottom:3px;">: ${d.customer.pel_first_name} ${d.customer.pel_last_name}</td></tr>
+          <tr><td style="padding-bottom:3px;">KASIR</td><td style="padding-bottom:3px;">: ${currentUser.nama}</td></tr>
+        </table>
+        
+        ${solidLine}
+        ${itemsHtml}
+        ${solidLine}
+        
+        <div style="display:flex; justify-content:space-between; font-weight:900; font-size:14px; margin-bottom:6px;">
+          <span>TOTAL</span>
+          <span>${formatRupiah(d.total)}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:700; margin-bottom:4px; color:#333;">
+          <span>METODE</span>
+          <span>${d.metode.toUpperCase()}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:700; margin-bottom:4px; color:#333;">
+          <span>TUNAI</span>
+          <span>${formatRupiah(d.uang_cash)}</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:700; color:#333;">
+          <span>KEMBALIAN</span>
+          <span>${formatRupiah(kembalian)}</span>
+        </div>
+        
+        ${dashedLine}
+        
+        <div style="text-align:center; margin-top:14px;">
+          <p style="margin:0; font-size:13px; font-weight:900;">TERIMA KASIH</p>
+          <p style="margin:4px 0 0 0; font-size:10px; font-weight:700;">Atas Kepercayaan Anda!</p>
+          <p style="margin:4px 0 0 0; font-size:10px; font-weight:700; font-style:italic;">Cucian Bersih, Hati Tenang.</p>
+        </div>
+      `;
+      
+      document.getElementById('printArea').innerHTML = html;
+      document.getElementById('strukLayar').innerHTML = html;
+      document.getElementById('modalPreviewStruk').classList.add('show');
+    }
+
+    async function kirimWA() {
+      const d = window.lastTrxData;
+      if(!d) return;
+      
+      let phone = d.customer.pel_no_telepon || '';
+      if(phone.startsWith('0')) phone = '62' + phone.substring(1);
+      if(!phone) {
+        showToast('Customer tidak memiliki nomor telepon', 'error');
+        return;
+      }
+      
+      let itemText = d.cart.map(i => `- ${i.nama} (${i.qty}x)`).join('\n');
+      
+      // 1. KUNCI SAKTI: Kita bikin URL Download langsung ke Railway
+      const pdfUrl = `https://project-ta-pa-shabria-laundry-production.up.railway.app/api/invoice/download/${d.id}?sig=${d.signature}`;
+      
+      // 2. Selipin URL-nya ke dalam teks WA
+      const text = `*SHABRIA LAUNDRY*\n\n`
+        + `Halo Kak *${d.customer.pel_first_name}*,\n`
+        + `Terima kasih telah mempercayakan laundry pakaian Anda kepada kami.\n\n`
+        + `*Detail Pesanan:*\n`
+        + `No Nota: ${d.id}\n`
+        + `Layanan:\n${itemText}\n\n`
+        + `*Total Bayar:* ${formatRupiah(d.total)}\n\n`
+        + `📄 *Unduh Invoice Anda pada link berikut:*\n${pdfUrl}\n\n`
+        + `Terima kasih! 🙏`;
+        
+      const WA_API_URL = "https://api.fonnte.com/send"; 
+      const WA_TOKEN   = "J3AHPsxHJE2duqmPT8oT"; 
+
+      const btn = document.querySelector('button[onclick="kirimWA()"]');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '⏳ Mengirim WA...';
+      btn.disabled = true;
+
+      try {
+        // Kita cuma ngirim teks sekarang, no file!
+        const formData = new FormData();
+        formData.append('target', phone);
+        formData.append('message', text);
+
+        const response = await fetch(WA_API_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': WA_TOKEN
+          },
+          body: formData 
+        });
+
+        const res = await response.json();
+
+        if (res.status === true || res.status === 'success') {
+          showToast('✅ Pesan WA berhasil dikirim!', 'success');
+          btn.style.display = 'none'; 
+        } else {
+          showToast('Gagal ngirim WA: ' + (res.reason || res.message), 'error');
+        }
+      } catch (err) {
+        console.error(err);
+        showToast('Terjadi kesalahan saat kirim WA: ' + err.message, 'error');
+      } finally {
+        if (btn) {
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+        }
+      }
+    }
+
+    async function printPDFLangsung(url) {
+      let iframe = document.getElementById('printIframe');
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'printIframe';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+      }
+      document.body.style.cursor = 'wait';
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Gagal ngambil PDF');
+        
+        const blob = await response.blob();
+        const fileUrl = URL.createObjectURL(blob);
+        
+        iframe.src = fileUrl;
+        iframe.onload = function() {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+          document.body.style.cursor = 'default';
+        };
+      } catch (err) {
+        alert("Error pas mau ngeprint: " + err.message);
+        document.body.style.cursor = 'default';
+      }
+    }
+
+    function cetakLabelPDF() {
+      const d = window.lastTrxData;
+      if(!d) return;
+      cetakLabelThermal(d.id); 
+    }
+
+    // --- JURUS ANTI KERTAS KOSONG (HTML KE THERMAL) ---
+// --- JURUS ANTI KERTAS KOSONG (SUDAH ANTI-LIVE SERVER BUG) ---
+    function cetakLabelThermal(idTransaksi) {
+        let iframe = document.getElementById('printLabelIframe');
+        if (!iframe) {
+            iframe = document.createElement('iframe');
+            iframe.id = 'printLabelIframe';
+            iframe.style.display = 'none';
+            document.body.appendChild(iframe);
+        }
+        
+        const doc = iframe.contentWindow.document;
+        doc.open();
+        
+        // KUNCI SAKTI: Penutup HTML dan BODY kita pisah string-nya
+        // biar Live Server gak bisa nemuin dan nyuntik script di dalem sini!
+        doc.write(`
+            <html>
+            <head>
+                <style>
+                    @page { margin: 0; } 
+                    body { 
+                        margin: 0; 
+                        padding: 4mm 2mm 0 2mm; 
+                        width: 54mm; 
+                        font-family: 'Courier New', Courier, monospace; /* INI FONT MONOSPACE NYA */
+                        color: black; 
+                    }
+                    .box { 
+                        border: 2px solid black; 
+                        padding: 12px 5px; 
+                        text-align: center; 
+                    }
+                    .dashed { 
+                        border-bottom: 2px dashed black; 
+                        margin: 10px 0; 
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="box">
+                    <h2 style="margin:0; font-size:18px; font-weight:900;">SHABRIA<br>LAUNDRY</h2>
+                    <div class="dashed"></div>
+                    <p style="margin:0; font-size:11px;">ID TRANSAKSI:</p>
+                    <h1 style="margin:6px 0; font-size:24px; font-weight:900;">${idTransaksi}</h1>
+                    <div class="dashed"></div>
+                    <p style="margin:0; font-size:11px; font-weight:bold;">Cucian Bersih,<br>Hati Tenang</p>
+                </div>
+            </bo` + `dy>
+            </ht` + `ml>`
+        );
+        doc.close();
+        
+        setTimeout(() => {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+        }, 250);
+    }
+    function cetakInvoicePDF() {
+      const d = window.lastTrxData;
+      if(!d) return;
+      printPDFLangsung(`https://project-ta-pa-shabria-laundry-production.up.railway.app/api/invoice/download/${d.id}?sig=${d.signature}`);
+    }
+
+    async function downloadInvoicePDF() {
+      const d = window.lastTrxData;
+      if(!d) return;
+      const url = `https://project-ta-pa-shabria-laundry-production.up.railway.app/api/invoice/download/${d.id}?sig=${d.signature}`;
+      
+      try {
+        document.body.style.cursor = 'wait';
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Gagal download PDF');
+        
+        const blob = await response.blob();
+        const fileUrl = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = fileUrl;
+        a.download = `Invoice_Shabria_${d.id}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(fileUrl);
+      } catch (err) {
+        alert("Error pas mau download: " + err.message);
+      } finally {
+        document.body.style.cursor = 'default';
+      }
+    }
+  </script>
+</body>
+</html>

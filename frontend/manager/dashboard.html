@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Shabria Laundry</title>
+  <link rel="stylesheet" href="../css/main.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+  <div id="app" style="display:flex; height:100vh; overflow:hidden; background:#F0FFF4;">
+    <div id="sidebar" class="desktop-sidebar" style="flex-shrink:0;"></div>
+    <div id="overlay" onclick="closeSidebar()" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:198;"></div>
+    <div id="mobileSidebar" style="display:none; position:fixed; top:0; left:0; bottom:0; width:260px; z-index:199;"></div>
+
+    <div style="flex:1; display:flex; flex-direction:column; overflow:hidden; min-width:0;">
+      <header id="topHeader"></header>
+      
+      <main style="flex:1; overflow-y:auto; scrollbar-width:none;">
+        <div class="pg">
+
+          <div class="pg-head">
+            <div>
+              <p class="tgl" id="tgl"></p>
+              <h1 id="greet">Dashboard</h1>
+            </div>
+            <div>
+              <button class="btn-refresh" id="refreshBtn" onclick="onRefresh()">🔄 Refresh</button>
+              <p id="lastUpdate">Memuat data…</p>
+            </div>
+          </div>
+
+          <div class="kpi-grid" id="kpiGrid"></div>
+
+          <div class="chart-row">
+            <div class="card fade-in">
+              <div class="ch">
+                <h3>📊 Tren Omzet Harian</h3>
+              </div>
+              <div class="chart-container">
+                <canvas id="barOmzetChart"></canvas>
+              </div>
+            </div>
+            <div class="card fade-in" style="animation-delay: 0.1s;">
+              <div class="ch">
+                <h3>🍕 Komposisi Omzet</h3>
+              </div>
+              <div class="chart-container">
+                <canvas id="pieChart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="chart-row-2">
+            <div class="card fade-in" style="animation-delay: 0.2s;">
+              <div class="ch">
+                <h3>📅 Layanan Mingguan</h3>
+                <span class="ch-badge">7 hari terakhir</span>
+              </div>
+              <div class="chart-container-bar">
+                <canvas id="barWeeklyChart"></canvas>
+              </div>
+            </div>
+            <div class="card fade-in" style="animation-delay: 0.3s;">
+              <div class="ch">
+                <h3>🏆 Performa Admin</h3>
+              </div>
+              <div style="padding:14px 18px;" id="perfList">Memuat...</div>
+            </div>
+          </div>
+
+          <div class="bottom-row">
+            <div class="card fade-in" style="animation-delay: 0.4s;">
+              <div class="card-head">
+                <h3>🧾 Transaksi Terbaru</h3>
+                <span id="activityFilterLabel" style="font-size:11px;color:var(--mute);"></span>
+              </div>
+              <div id="activityList" style="padding:6px 0;"></div>
+            </div>
+            <div class="card fade-in" style="animation-delay: 0.5s;">
+              <div class="card-head">
+                <h3>Menu Cepat</h3>
+              </div>
+              <div style="padding:14px;">
+                <a class="ql" href="transaksi.html" style="background:var(--accent-soft);">📋 Monitor Transaksi</a>
+                <a class="ql" href="laporan.html" style="background:var(--info-bg);">📈 Laporan</a>
+                <a class="ql" href="kelola-layanan.html" style="background:var(--warn-bg);">✨ Kelola Layanan</a>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <script src="../js/api.js"></script>
+  <script src="../js/layout.js"></script>
+  <script>
+    const STATUS_COLORS = {
+      Antrean: '#9CA3AF', Dicuci: '#3B82F6', Disetrika: '#F97316',
+      Siap: '#22C55E', Selesai: '#10B981', Dibatalkan: '#EF4444',
+    };
+
+    const KPI_DEFS = [
+      { key: 'omzet', icon: '💰', label: 'Total Omzet (Bulan Ini)', color: '#15803D', bg: '#F0FDF4', currency: true, filter: null },
+      { key: 'aktif', icon: '🧾', label: 'Transaksi Aktif', color: '#1565C0', bg: '#EFF6FF', currency: false, filter: 'aktif' },
+      { key: 'pengeluaran', icon: '💸', label: 'Pengeluaran (Bulan Ini)', color: '#C2410C', bg: '#FFF7ED', currency: true, filter: null },
+      { key: 'pelanggan', icon: '👥', label: 'Total Pelanggan', color: '#7C3AED', bg: '#F3E8FF', currency: false, filter: null },
+    ];
+
+    let DASHBOARD_DATA = { trx: [], pengeluaran: [], pelanggan: [] };
+    let lastKpiValues = {};
+    let activeFilter = '';
+    let usingDummyData = false;
+
+    let trendChartInst = null;
+    let statusChartInst = null;
+    let barWeeklyChartInst = null;
+
+    function getStatus(trx) { return trx.detail?.[0]?.status_pengerjaan ?? 'Antrean'; }
+
+    // Fungsi ekstraksi tanggal tangguh
+    function parseSafeDate(dateStr) {
+      if (!dateStr) return new Date();
+      if (typeof dateStr === 'string' && dateStr.includes(' ') && !dateStr.includes(',')) {
+        dateStr = dateStr.replace(' ', 'T');
+      }
+      return new Date(dateStr);
+    }
+
+    function isSameMonth(dateStr, ref) {
+      if (!dateStr) return false;
+      const d = parseSafeDate(dateStr);
+      return d.getMonth() === ref.getMonth() && d.getFullYear() === ref.getFullYear();
+    }
+
+    function buildDummyData() {
+      const today = new Date();
+      const kasirNames = ['Siti Aminah', 'Budi Santoso', 'Putri Ayu', 'Rian Hidayat'];
+      const custNames = ['Dewi Lestari', 'Andi Wijaya', 'Rizky Pratama', 'Maya Sari', 'Fajar Nugroho'];
+      const layananList = ['Cuci Kering', 'Cuci Basah', 'Setrika Saja'];
+      const statusPool = ['Antrean', 'Dicuci', 'Disetrika', 'Siap', 'Selesai'];
+      const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+      const trx = [];
+      for (let d = 6; d >= 0; d--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - d);
+        trx.push({
+          id_transaksi: 'TRX-DUMMY-' + d,
+          tanggal_masuk: date.toISOString(),
+          pelanggan_nama: pick(custNames),
+          kasir_nama: pick(kasirNames),
+          total_bayar: (15 + Math.floor(Math.random() * 20)) * 1000,
+          sudah_dibayar: Math.random() > 0.3,
+          detail: [{ status_pengerjaan: pick(statusPool), lay_nama: pick(layananList) }],
+        });
+      }
+      return { trx, pengeluaran: [], pelanggan: custNames.map((n, i) => ({ id_pelanggan: i, nama: n })) };
+    }
+
+    async function loadDashboard() {
+      try {
+        const [trx, pengeluaran, pelanggan] = await Promise.all([
+          api.transaksi.all(),
+          api.laporan.pengeluaran(),
+          api.pelanggan.all(),
+        ]);
+        DASHBOARD_DATA = { trx: trx || [], pengeluaran: pengeluaran || [], pelanggan: pelanggan || [] };
+        usingDummyData = false;
+      } catch (err) {
+        console.warn('[dashboard] Gagal memuat dari API, menampilkan data contoh:', err.message);
+        DASHBOARD_DATA = buildDummyData();
+        usingDummyData = true;
+      }
+      renderAll();
+    }
+
+    function renderAll() {
+      const { trx, pengeluaran, pelanggan } = DASHBOARD_DATA;
+      const now = new Date();
+
+      const omzetBulanIni = trx.filter(t => t.sudah_dibayar && isSameMonth(t.tanggal_masuk, now)).reduce((s, t) => s + Number(t.total_bayar || 0), 0);
+      const aktifCount = trx.filter(t => { const s = getStatus(t); return s !== 'Selesai' && s !== 'Dibatalkan'; }).length;
+      const pengeluaranBulanIni = pengeluaran.filter(p => isSameMonth(p.tanggal, now)).reduce((s, p) => s + Number(p.jumlah || 0), 0);
+
+      lastKpiValues = { omzet: omzetBulanIni, aktif: aktifCount, pengeluaran: pengeluaranBulanIni, pelanggan: pelanggan.length };
+
+      renderKpi();
+      renderTrendChart(trx);
+      renderStatusChart(trx);
+      renderBarWeeklyChart(trx);
+      renderPerfList(trx);
+      renderActivityList(trx);
+
+      document.getElementById('lastUpdate').textContent =
+        (usingDummyData ? '📦 Data contoh · ' : '') + 'Diperbarui ' + now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderKpi() {
+      const grid = document.getElementById('kpiGrid');
+      grid.innerHTML = KPI_DEFS.map((d, idx) => {
+        const val = lastKpiValues[d.key];
+        const display = d.currency ? formatRupiah(val) : (val ?? 0);
+        const clickable = !!d.filter;
+        const isActive = clickable && activeFilter === d.filter;
+        return `
+        <div class="kpi-card fade-in ${isActive ? 'active' : ''}"
+             style="animation-delay:${idx * 0.04}s;${clickable ? 'cursor:pointer;' : ''}"
+             ${clickable ? `onclick="toggleFilter('${d.filter}')"` : ''}>
+          <div class="kpi-icon" style="background:${d.bg};">${d.icon}</div>
+          <div class="kpi-body">
+            <p class="kpi-value" style="color:${d.color};">${display}</p>
+            <p class="kpi-label">${d.label}</p>
+          </div>
+          ${clickable ? `<span class="kpi-filter-hint">${isActive ? '✓ Filter aktif' : 'Klik untuk filter'}</span>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    function toggleFilter(key) {
+      activeFilter = (activeFilter === key) ? '' : key;
+      renderKpi();
+      renderActivityList(DASHBOARD_DATA.trx);
+    }
+
+    function renderTrendChart(trx) {
+      const byDate = {};
+      trx.filter(t => t.sudah_dibayar).forEach(t => {
+        if (!t.tanggal_masuk) return;
+        const dObj = parseSafeDate(t.tanggal_masuk);
+        if (isNaN(dObj.getTime())) return;
+        const d = dObj.toISOString().slice(0, 10);
+        byDate[d] = (byDate[d] || 0) + Number(t.total_bayar || 0);
+      });
+      const sorted = Object.entries(byDate).sort((a, b) => a[0].localeCompare(b[0])).slice(-7);
+      const labels = sorted.map(([d]) => new Date(d).toLocaleDateString('id-ID', { day: '2-digit', month: 'short' }));
+      const data = sorted.map(([, v]) => v);
+
+      if (trendChartInst) trendChartInst.destroy();
+      const ctx = document.getElementById('barOmzetChart');
+      if (!ctx) return;
+      trendChartInst = new Chart(ctx, {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Omzet', data, backgroundColor: '#15803D', borderRadius: 6, maxBarThickness: 38 }] },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => 'Rp ' + Number(c.raw).toLocaleString('id-ID') } } },
+          scales: { y: { ticks: { callback: (v) => v >= 1e6 ? (v / 1e6) + 'jt' : v >= 1e3 ? (v / 1e3) + 'rb' : v } }, x: { grid: { display: false } } },
+        },
+      });
+    }
+
+    function renderStatusChart(trx) {
+      const counts = {};
+      trx.forEach(t => { const s = getStatus(t); counts[s] = (counts[s] || 0) + 1; });
+      const labels = Object.keys(counts);
+      const data = labels.map(l => counts[l]);
+      const colors = labels.map(l => STATUS_COLORS[l] || '#9CA3AF');
+
+      if (statusChartInst) statusChartInst.destroy();
+      const ctx = document.getElementById('pieChart');
+      if (!ctx) return;
+      statusChartInst = new Chart(ctx, {
+        type: 'doughnut',
+        data: { labels, datasets: [{ data, backgroundColor: colors, borderWidth: 0 }] },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '62%',
+          plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11 } } } },
+        },
+      });
+    }
+
+    function renderBarWeeklyChart(trx) {
+      const ctx = document.getElementById('barWeeklyChart');
+      if (!ctx) return;
+      if (barWeeklyChartInst) barWeeklyChartInst.destroy();
+
+      const weeklyCounts = [0, 0, 0, 0, 0, 0, 0];
+      trx.forEach(t => {
+        if (!t.tanggal_masuk) return;
+        const d = parseSafeDate(t.tanggal_masuk);
+        const dayIndex = (d.getDay() + 6) % 7;
+        weeklyCounts[dayIndex]++;
+      });
+
+      barWeeklyChartInst = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: ['Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab', 'Min'],
+          datasets: [{ label: 'Total Layanan', data: weeklyCounts, backgroundColor: '#7C3AED', borderRadius: 4 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      });
+    }
+
+    function renderPerfList(trx) {
+      const perfList = document.getElementById('perfList');
+      if (!perfList) return;
+
+      const counts = {};
+      trx.forEach(t => {
+        if (t.kasir_nama) counts[t.kasir_nama] = (counts[t.kasir_nama] || 0) + 1;
+      });
+
+      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      const medals = ['🥇', '🥈', '🥉'];
+
+      if (sorted.length === 0) {
+        perfList.innerHTML = `<div style="color:var(--mute); font-size:13px; text-align:center;">Belum ada data performa.</div>`;
+        return;
+      }
+
+      perfList.innerHTML = sorted.slice(0, 3).map(([name, count], idx) => {
+        return `
+          <div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:13px; border-bottom:1px solid #f3f4f6; padding-bottom:8px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                 <span style="font-size:16px;">${medals[idx] || '👤'}</span> <strong>${name}</strong>
+              </div>
+              <span style="color:var(--accent); font-weight:900;">${count} Trx</span>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderActivityList(trx) {
+      let list = trx.slice().sort((a, b) => (b.tanggal_masuk || '').localeCompare(a.tanggal_masuk || ''));
+      const filterLabel = document.getElementById('activityFilterLabel');
+
+      if (activeFilter === 'aktif') {
+        list = list.filter(t => { const s = getStatus(t); return s !== 'Selesai' && s !== 'Dibatalkan'; });
+        filterLabel.textContent = 'Menampilkan: Transaksi Aktif';
+      } else {
+        filterLabel.textContent = '';
+      }
+      list = list.slice(0, 7);
+
+      const el = document.getElementById('activityList');
+      if (!list.length) {
+        el.innerHTML = `<div style="text-align:center;padding:40px 0;color:var(--mute);">
+        <span style="font-size:36px;">🗂️</span>
+        <p style="margin-top:10px;font-size:13px;">Belum ada transaksi untuk ditampilkan.</p></div>`;
+        return;
+      }
+
+      el.innerHTML = list.map(t => {
+        const status = getStatus(t);
+        const color = STATUS_COLORS[status] || '#9CA3AF';
+        const layanan = t.detail?.[0]?.lay_nama || '-';
+        return `
+        <div class="activity-item">
+          <div class="activity-avatar" style="background:${color}1A;color:${color};">🧺</div>
+          <div class="activity-info">
+            <p class="activity-name">${t.pelanggan_nama || '-'}</p>
+            <p class="activity-meta">👤 ${t.kasir_nama || '-'} · ${layanan} · ${status}</p>
+          </div>
+          <div class="activity-right">
+            <p class="activity-amount">${formatRupiah(t.total_bayar)}</p>
+            <span class="badge ${t.sudah_dibayar ? 'badge-lunas' : 'badge-belum'}">
+              ${t.sudah_dibayar ? '✓ Lunas' : '⏳ Belum bayar'}
+            </span>
+          </div>
+        </div>`;
+      }).join('');
+    }
+
+    async function onRefresh() {
+      const btn = document.getElementById('refreshBtn');
+      btn.disabled = true; btn.textContent = '⏳ Memuat...';
+      try {
+        await loadDashboard();
+        showToast('Data diperbarui', 'success');
+      } catch (err) {
+        showToast('Gagal memuat: ' + err.message, 'error');
+      } finally {
+        btn.disabled = false; btn.textContent = '🔄 Refresh';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      const user = await requireAuth(['manager', 'owner']);
+      if (!user) return;
+      initManagerLayout(user, 'dashboard');
+
+      document.getElementById('tgl').textContent = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+      document.getElementById('greet').textContent = 'Halo, ' + (user.nama ? user.nama.split(' ')[0] : 'Boss') + ' 👋';
+
+      await loadDashboard();
+    });
+  </script>
+</body>
+
+</html> 
